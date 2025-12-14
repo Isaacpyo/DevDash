@@ -1,21 +1,53 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { GitCommit, Star, Code, Award, Layout } from 'lucide-react';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24 bg-slate-50">
-      <div className="z-10 w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl lg:static lg:w-auto lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4">
-          Status: <span className="font-bold text-green-600 ml-2">Live Demo</span>
-        </p>
-      </div>
-      <div className="relative flex flex-col place-items-center text-center">
-        <h1 className="text-6xl font-bold tracking-tight text-slate-900 mb-4">DevDash</h1>
-        <p className="text-xl text-slate-600 max-w-2xl">Personal Developer Portfolio & Analytics</p>
-        <div className="mt-8 flex gap-4">
-            <button className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2">
-                Launch App <ArrowRight size={18} />
-            </button>
+    <main className="min-h-screen bg-zinc-900 text-zinc-300 font-mono">
+      <div className="flex h-screen">
+        {/* Sidebar */}
+        <div className="w-64 bg-zinc-950 border-r border-zinc-800 p-6 flex flex-col gap-6">
+          <div className="text-2xl font-bold text-white mb-6">DevDash_</div>
+          <div className="flex items-center gap-3 text-white bg-zinc-800 p-2 rounded"><Layout size={18}/> Overview</div>
+          <div className="flex items-center gap-3 hover:text-white"><Code size={18}/> Projects</div>
+          <div className="flex items-center gap-3 hover:text-white"><Award size={18}/> Certificates</div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-8 overflow-y-auto">
+          <header className="flex justify-between items-end mb-12">
+            <div>
+              <h1 className="text-4xl font-bold text-white mb-2">Alex Dev</h1>
+              <p className="text-zinc-500">Senior Full Stack Engineer</p>
+            </div>
+            <button className="bg-white text-black px-6 py-2 rounded font-bold hover:bg-zinc-200">Download CV</button>
+          </header>
+
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-6 mb-12">
+            <div className="bg-zinc-800/50 p-6 rounded-lg border border-zinc-800">
+              <div className="text-zinc-500 text-sm mb-2">Total Commits</div>
+              <div className="text-3xl font-bold text-white flex items-center gap-2">
+                2,842 <GitCommit className="text-green-500" size={20}/>
+              </div>
+            </div>
+            <div className="bg-zinc-800/50 p-6 rounded-lg border border-zinc-800">
+              <div className="text-zinc-500 text-sm mb-2">GitHub Stars</div>
+              <div className="text-3xl font-bold text-white flex items-center gap-2">
+                145 <Star className="text-yellow-500" size={20}/>
+              </div>
+            </div>
+          </div>
+
+          {/* Activity Graph Simulation */}
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-lg mb-8">
+             <h3 className="text-lg font-bold text-white mb-4">Contribution Activity</h3>
+             <div className="flex gap-1 h-32 items-end">
+                {[...Array(40)].map((_, i) => (
+                  <div key={i} className="flex-1 bg-green-500/20 hover:bg-green-500 transition-colors rounded-t-sm" style={{height: `${Math.random() * 100}%`}}></div>
+                ))}
+             </div>
+          </div>
         </div>
       </div>
     </main>
