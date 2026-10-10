@@ -47,3 +47,8 @@ export class UpstreamError extends GitHubError {
 export class ConfigurationError extends GitHubError {
   override name = "ConfigurationError";
 }
+
+/** GitHub rejected the token (expired, revoked or wrong). */
+export class BadCredentialsError extends GitHubError {
+  override name = "BadCredentialsError";
+}
