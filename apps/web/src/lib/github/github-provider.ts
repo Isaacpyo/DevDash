@@ -84,7 +84,9 @@ async function explainMissingUser(client: GitHubClient, login: string): Promise<
       restUserSchema,
       login,
     );
-    return restUser.type === "Organization" ? new NotAUserError(restUser.login) : new NotFoundError(login);
+    return restUser.type === "Organization"
+      ? new NotAUserError(restUser.login)
+      : new NotFoundError(login);
   } catch (error) {
     if (error instanceof GitHubError) return error;
     throw error;

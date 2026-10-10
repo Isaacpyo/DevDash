@@ -21,7 +21,6 @@ export function normalizeMonthlyActivity(
 ): MonthlyContributions[] {
   const byMonth = new Map(monthly.map((entry) => [entry.month, entry]));
   return lastMonths(now, count).map(
-    (month) =>
-      byMonth.get(month) ?? { month, commits: 0, pullRequests: 0, issues: 0, reviews: 0 },
+    (month) => byMonth.get(month) ?? { month, commits: 0, pullRequests: 0, issues: 0, reviews: 0 },
   );
 }

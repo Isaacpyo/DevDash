@@ -38,9 +38,7 @@ export function computePullRequestStats(prs: RawPullRequests): PullRequestStats 
     .filter((value) => Number.isFinite(value) && value >= 0)
     .sort((a, b) => a - b);
 
-  const sizes = prs.recentMerged
-    .map((pr) => pr.additions + pr.deletions)
-    .sort((a, b) => a - b);
+  const sizes = prs.recentMerged.map((pr) => pr.additions + pr.deletions).sort((a, b) => a - b);
 
   const finished = prs.merged + prs.closed;
 

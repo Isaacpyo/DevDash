@@ -7,10 +7,16 @@ describe("isValidLogin", () => {
     (login) => expect(isValidLogin(login)).toBe(true),
   );
 
-  it.each(["", "-leading", "trailing-", "double--hyphen", "has space", "x".repeat(40), "a/b", "o'neil"])(
-    "rejects %j",
-    (login) => expect(isValidLogin(login)).toBe(false),
-  );
+  it.each([
+    "",
+    "-leading",
+    "trailing-",
+    "double--hyphen",
+    "has space",
+    "x".repeat(40),
+    "a/b",
+    "o'neil",
+  ])("rejects %j", (login) => expect(isValidLogin(login)).toBe(false));
 
   it("accepts the demo login even though it has an underscore", () => {
     expect(isValidLogin(DEMO_LOGIN)).toBe(true);

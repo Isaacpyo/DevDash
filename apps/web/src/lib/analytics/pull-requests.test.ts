@@ -49,7 +49,12 @@ describe("computePullRequestStats", () => {
       merged: 30,
       open: 2,
       closed: 10,
-      recentMerged: [mergedAfter(1, 10), mergedAfter(2, 20), mergedAfter(3, 30), mergedAfter(10, 40)],
+      recentMerged: [
+        mergedAfter(1, 10),
+        mergedAfter(2, 20),
+        mergedAfter(3, 30),
+        mergedAfter(10, 40),
+      ],
     });
 
     expect(stats.mergeRate).toBe(0.75);
@@ -78,7 +83,11 @@ describe("computePullRequestStats", () => {
       merged: 2,
       open: 0,
       closed: 0,
-      recentMerged: [mergedAfter(-5), { ...mergedAfter(1), mergedAt: "not a date" }, mergedAfter(4)],
+      recentMerged: [
+        mergedAfter(-5),
+        { ...mergedAfter(1), mergedAt: "not a date" },
+        mergedAfter(4),
+      ],
     });
     expect(stats.sampleSize).toBe(1);
     expect(stats.medianHours).toBe(4);

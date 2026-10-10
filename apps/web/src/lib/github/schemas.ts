@@ -168,14 +168,12 @@ export const restEventSchema = z.object({
 });
 
 /** One malformed event shouldn't hide the rest, so items are validated individually. */
-export const restEventsSchema = z
-  .array(z.unknown())
-  .transform((items) =>
-    items.flatMap((item) => {
-      const parsed = restEventSchema.safeParse(item);
-      return parsed.success ? [parsed.data] : [];
-    }),
-  );
+export const restEventsSchema = z.array(z.unknown()).transform((items) =>
+  items.flatMap((item) => {
+    const parsed = restEventSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  }),
+);
 
 export const restRateLimitSchema = z.object({
   resources: z.object({

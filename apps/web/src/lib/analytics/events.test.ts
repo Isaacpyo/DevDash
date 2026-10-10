@@ -5,7 +5,8 @@ import { summarizeEvent, summarizeEvents } from "./events";
 describe("summarizeEvent", () => {
   it("summarizes pushes with and without commit counts", () => {
     expect(
-      summarizeEvent(event({ type: "PushEvent", payload: { ref: "refs/heads/main", size: 3 } }))?.summary,
+      summarizeEvent(event({ type: "PushEvent", payload: { ref: "refs/heads/main", size: 3 } }))
+        ?.summary,
     ).toBe("Pushed 3 commits to main");
     expect(
       summarizeEvent(event({ type: "PushEvent", payload: { ref: "refs/heads/feat/x" } })),
@@ -19,7 +20,10 @@ describe("summarizeEvent", () => {
     const merged = summarizeEvent(
       event({
         type: "PullRequestEvent",
-        payload: { action: "closed", pull_request: { number: 7, title: "Add cache", merged: true } },
+        payload: {
+          action: "closed",
+          pull_request: { number: 7, title: "Add cache", merged: true },
+        },
       }),
     );
     expect(merged).toMatchObject({
@@ -28,7 +32,10 @@ describe("summarizeEvent", () => {
     });
 
     const closed = summarizeEvent(
-      event({ type: "PullRequestEvent", payload: { action: "closed", number: 8, pull_request: {} } }),
+      event({
+        type: "PullRequestEvent",
+        payload: { action: "closed", number: 8, pull_request: {} },
+      }),
     );
     expect(closed?.summary).toBe("Closed pull request #8");
   });
@@ -43,22 +50,29 @@ describe("summarizeEvent", () => {
       )?.summary,
     ).toBe("Approved pull request #2");
     expect(
-      summarizeEvent(event({ type: "IssuesEvent", payload: { action: "opened", issue: { number: 4, title: "Bug" } } }))
-        ?.summary,
+      summarizeEvent(
+        event({
+          type: "IssuesEvent",
+          payload: { action: "opened", issue: { number: 4, title: "Bug" } },
+        }),
+      )?.summary,
     ).toBe("Opened issue #4: Bug");
     expect(
-      summarizeEvent(event({ type: "IssueCommentEvent", payload: { issue: { number: 4 } } }))?.summary,
+      summarizeEvent(event({ type: "IssueCommentEvent", payload: { issue: { number: 4 } } }))
+        ?.summary,
     ).toBe("Commented on #4");
     expect(
-      summarizeEvent(event({ type: "ReleaseEvent", payload: { release: { name: null, tag_name: "v1.2.0" } } }))
-        ?.summary,
+      summarizeEvent(
+        event({ type: "ReleaseEvent", payload: { release: { name: null, tag_name: "v1.2.0" } } }),
+      )?.summary,
     ).toBe("Published release v1.2.0");
     expect(
-      summarizeEvent(event({ type: "ForkEvent", payload: { forkee: { full_name: "me/hello" } } }))?.summary,
+      summarizeEvent(event({ type: "ForkEvent", payload: { forkee: { full_name: "me/hello" } } }))
+        ?.summary,
     ).toBe("Forked to me/hello");
-    expect(summarizeEvent(event({ type: "CreateEvent", payload: { ref_type: "repository" } }))?.summary).toBe(
-      "Created repository",
-    );
+    expect(
+      summarizeEvent(event({ type: "CreateEvent", payload: { ref_type: "repository" } }))?.summary,
+    ).toBe("Created repository");
   });
 
   it("drops noisy or unknown events", () => {

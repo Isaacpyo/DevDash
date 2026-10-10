@@ -72,7 +72,12 @@ function activityUser() {
     mergedPullRequests: {
       totalCount: 5,
       nodes: [
-        { createdAt: "2026-09-01T00:00:00Z", mergedAt: "2026-09-01T05:00:00Z", additions: 10, deletions: 2 },
+        {
+          createdAt: "2026-09-01T00:00:00Z",
+          mergedAt: "2026-09-01T05:00:00Z",
+          additions: 10,
+          deletions: 2,
+        },
         { createdAt: "2026-09-02T00:00:00Z", mergedAt: null, additions: 1, deletions: 1 },
       ],
     },
@@ -93,7 +98,10 @@ const events = [
 ];
 
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 type Routes = {
@@ -125,7 +133,9 @@ function provider(fetchImpl: typeof fetch) {
 
 describe("createGitHubProvider", () => {
   it("requires a token", async () => {
-    await expect(provider(fakeGitHub()).fetchProfile("octocat")).rejects.toBeInstanceOf(ConfigurationError);
+    await expect(provider(fakeGitHub()).fetchProfile("octocat")).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
   });
 
   it("maps GraphQL and REST responses into raw data", async () => {
@@ -143,17 +153,33 @@ describe("createGitHubProvider", () => {
       { date: "2026-10-04", count: 0, level: 0 },
       { date: "2026-10-05", count: 7, level: 4 },
     ]);
-    expect(data.totals).toEqual({ commits: 10, pullRequests: 3, issues: 2, reviews: 4, restricted: 1 });
+    expect(data.totals).toEqual({
+      commits: 10,
+      pullRequests: 3,
+      issues: 2,
+      reviews: 4,
+      restricted: 1,
+    });
     expect(data.monthly).toHaveLength(12);
     expect(data.monthly[0]).toMatchObject({ month: "2025-11", commits: 0 });
     expect(data.monthly[11]).toMatchObject({ month: "2026-10", commits: 11 });
     expect(data.repos).toHaveLength(1);
-    expect(data.repos[0]).toMatchObject({ stars: 2500, languages: [{ name: "Ruby", bytes: 1234 }] });
+    expect(data.repos[0]).toMatchObject({
+      stars: 2500,
+      languages: [{ name: "Ruby", bytes: 1234 }],
+    });
     expect(data.pullRequests).toEqual({
       merged: 5,
       open: 1,
       closed: 2,
-      recentMerged: [{ createdAt: "2026-09-01T00:00:00Z", mergedAt: "2026-09-01T05:00:00Z", additions: 10, deletions: 2 }],
+      recentMerged: [
+        {
+          createdAt: "2026-09-01T00:00:00Z",
+          mergedAt: "2026-09-01T05:00:00Z",
+          additions: 10,
+          deletions: 2,
+        },
+      ],
     });
     expect(data.events.map((e) => e.id)).toEqual(["e1"]);
   });
@@ -161,8 +187,13 @@ describe("createGitHubProvider", () => {
   it("sends month ranges as variables, not interpolated strings", async () => {
     const fetchImpl = fakeGitHub();
     await provider(fetchImpl).fetchProfile("octocat", { token: "t" });
-    const activityCall = fetchImpl.mock.calls.find(([, init]) => String(init?.body).includes("DevDashActivity"));
-    const body = JSON.parse(String(activityCall?.[1]?.body)) as { query: string; variables: Record<string, string> };
+    const activityCall = fetchImpl.mock.calls.find(([, init]) =>
+      String(init?.body).includes("DevDashActivity"),
+    );
+    const body = JSON.parse(String(activityCall?.[1]?.body)) as {
+      query: string;
+      variables: Record<string, string>;
+    };
     expect(body.query).not.toContain("2026-");
     expect(body.variables).toMatchObject({
       login: "octocat",
@@ -172,10 +203,9 @@ describe("createGitHubProvider", () => {
   });
 
   it("still returns data when the events feed fails", async () => {
-    const data = await provider(fakeGitHub({ events: () => json({ message: "boom" }, 500) })).fetchProfile(
-      "octocat",
-      { token: "t" },
-    );
+    const data = await provider(
+      fakeGitHub({ events: () => json({ message: "boom" }, 500) }),
+    ).fetchProfile("octocat", { token: "t" });
     expect(data.events).toEqual([]);
   });
 
@@ -185,7 +215,9 @@ describe("createGitHubProvider", () => {
       activity: () => json({ data: { user: null }, errors: [{ type: "NOT_FOUND" }] }),
       user: () => json({ message: "Not Found" }, 404),
     });
-    await expect(provider(fetchImpl).fetchProfile("ghost-user", { token: "t" })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      provider(fetchImpl).fetchProfile("ghost-user", { token: "t" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("reports organizations as NotAUserError", async () => {
@@ -194,13 +226,17 @@ describe("createGitHubProvider", () => {
       activity: () => json({ data: { user: null } }),
       user: () => json({ login: "github", type: "Organization" }),
     });
-    await expect(provider(fetchImpl).fetchProfile("github", { token: "t" })).rejects.toBeInstanceOf(NotAUserError);
+    await expect(provider(fetchImpl).fetchProfile("github", { token: "t" })).rejects.toBeInstanceOf(
+      NotAUserError,
+    );
   });
 
   it("propagates rate limits", async () => {
     const fetchImpl = fakeGitHub({
       profile: () => json({ errors: [{ type: "RATE_LIMITED", message: "limit" }] }),
     });
-    await expect(provider(fetchImpl).fetchProfile("octocat", { token: "t" })).rejects.toBeInstanceOf(RateLimitError);
+    await expect(
+      provider(fetchImpl).fetchProfile("octocat", { token: "t" }),
+    ).rejects.toBeInstanceOf(RateLimitError);
   });
 });

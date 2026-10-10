@@ -13,7 +13,10 @@ export interface BuildReportOptions {
 }
 
 /** Pure: turns raw provider data into everything the dashboard renders. */
-export function buildReport(raw: GitHubRawData, { source, now }: BuildReportOptions): ProfileReport {
+export function buildReport(
+  raw: GitHubRawData,
+  { source, now }: BuildReportOptions,
+): ProfileReport {
   const days = flattenCalendar(raw.calendar.weeks);
   const languageRepos = raw.repos.filter((repo) => repo.languages.length > 0);
 

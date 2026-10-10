@@ -25,12 +25,9 @@ export function normalizeLoginInput(input: string): string {
   return value.replace(/^@/, "");
 }
 
-export const loginSchema = z
-  .string()
-  .transform(normalizeLoginInput)
-  .refine(isValidLogin, {
-    message: "GitHub usernames are 1–39 letters, numbers or single hyphens.",
-  });
+export const loginSchema = z.string().transform(normalizeLoginInput).refine(isValidLogin, {
+  message: "GitHub usernames are 1–39 letters, numbers or single hyphens.",
+});
 
 export function cacheKeyForLogin(login: string): string {
   return login.toLowerCase();

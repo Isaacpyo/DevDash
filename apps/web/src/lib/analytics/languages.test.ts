@@ -5,7 +5,9 @@ import { aggregateLanguages, OTHER_LANGUAGE } from "./languages";
 describe("aggregateLanguages", () => {
   it("returns an empty list when there is no code", () => {
     expect(aggregateLanguages([])).toEqual([]);
-    expect(aggregateLanguages([repo({ languages: [{ name: "Go", color: null, bytes: 0 }] })])).toEqual([]);
+    expect(
+      aggregateLanguages([repo({ languages: [{ name: "Go", color: null, bytes: 0 }] })]),
+    ).toEqual([]);
   });
 
   it("sums bytes across repos, computes shares and repo counts", () => {
@@ -33,7 +35,10 @@ describe("aggregateLanguages", () => {
       bytes: 100 - i * 10,
     }));
     const result = aggregateLanguages(
-      [repo({ name: "x", languages: languages.slice(0, 3) }), repo({ name: "y", languages: languages.slice(3) })],
+      [
+        repo({ name: "x", languages: languages.slice(0, 3) }),
+        repo({ name: "y", languages: languages.slice(3) }),
+      ],
       3,
     );
 

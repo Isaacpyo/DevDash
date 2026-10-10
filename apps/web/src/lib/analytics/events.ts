@@ -57,14 +57,21 @@ export function summarizeEvent(event: RawEvent): ActivityItem | null {
     case "IssuesEvent": {
       const number = payload.issue?.number;
       const verb =
-        payload.action === "closed" ? "Closed" : payload.action === "reopened" ? "Reopened" : "Opened";
+        payload.action === "closed"
+          ? "Closed"
+          : payload.action === "reopened"
+            ? "Reopened"
+            : "Opened";
       summary = withTitle(`${verb} issue${number ? ` #${number}` : ""}`, payload.issue?.title);
       url = payload.issue?.html_url ?? repoUrl;
       break;
     }
     case "IssueCommentEvent": {
       const number = payload.issue?.number;
-      summary = withTitle(`Commented on${number ? ` #${number}` : " an issue"}`, payload.issue?.title);
+      summary = withTitle(
+        `Commented on${number ? ` #${number}` : " an issue"}`,
+        payload.issue?.title,
+      );
       url = payload.issue?.html_url ?? repoUrl;
       break;
     }
@@ -82,7 +89,8 @@ export function summarizeEvent(event: RawEvent): ActivityItem | null {
       url = payload.forkee?.html_url ?? repoUrl;
       break;
     case "ReleaseEvent":
-      summary = `Published release ${payload.release?.name || payload.release?.tag_name || ""}`.trim();
+      summary =
+        `Published release ${payload.release?.name || payload.release?.tag_name || ""}`.trim();
       url = payload.release?.html_url ?? repoUrl;
       break;
     case "PublicEvent":
