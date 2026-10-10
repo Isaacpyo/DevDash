@@ -1,6 +1,7 @@
 import { lastMonths } from "@/lib/analytics/activity";
 import { assignLevels } from "@/lib/analytics/calendar";
 import { hashString, Rng } from "@/lib/random";
+import { initialsAvatar } from "@/lib/avatar";
 import { NotAUserError, NotFoundError, RateLimitError } from "./errors";
 import { LANGUAGE_COLORS } from "./language-colors";
 import type {
@@ -195,20 +196,6 @@ function titleCase(login: string): string {
     .join(" ");
 }
 
-/** A self-contained SVG avatar so mock mode never depends on the network. */
-export function initialsAvatar(login: string, name: string): string {
-  const hue = hashString(login) % 360;
-  const initials =
-    name
-      .split(/\s+/)
-      .map((word) => word[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "?";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="hsl(${hue} 55% 42%)"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui,sans-serif" font-size="84" font-weight="600" fill="#fff">${initials}</text></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
 function startOfUtcDay(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
@@ -276,6 +263,7 @@ function generateRepos(
     stars: number,
     forks: number,
     languages: Array<[string, number]>,
+    isArchived = rng.chance(0.05),
   ): RawRepo => ({
     name,
     nameWithOwner: `${login}/${name}`,
@@ -283,7 +271,7 @@ function generateRepos(
     description,
     stars,
     forks,
-    isArchived: rng.chance(0.05),
+    isArchived,
     pushedAt: new Date(now.getTime() - rng.int(0, 600) * DAY_MS).toISOString(),
     primaryLanguage: languages[0]
       ? { name: languages[0][0], color: LANGUAGE_COLORS[languages[0][0]] ?? null }

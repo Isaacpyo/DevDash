@@ -37,6 +37,7 @@ export function buildReport(
     languages: aggregateLanguages(raw.repos),
     languageRepoCount: languageRepos.length,
     topRepos: topRepositories(raw.repos),
+    repoCount: raw.repos.length,
     totalStars: totalStars(raw.repos),
     pullRequests: computePullRequestStats(raw.pullRequests),
     recentActivity: summarizeEvents(raw.events),

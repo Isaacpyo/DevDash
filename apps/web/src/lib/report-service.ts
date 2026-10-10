@@ -12,6 +12,8 @@ export interface ReportEnvelope {
   cache: { status: CacheStatus; storedAt: number };
   /** Set when the data shown is cached because GitHub is rate limiting us. */
   rateLimitedUntil: number | null;
+  /** When this envelope was produced; the reference point for relative times in the UI. */
+  servedAt: number;
 }
 
 export interface RefreshResult extends ReportEnvelope {
@@ -153,7 +155,12 @@ export class ReportService {
         rateLimitedUntil = Math.min(...(resets as number[]));
       }
     }
-    return { report, cache: { status, storedAt }, rateLimitedUntil };
+    return {
+      report,
+      cache: { status, storedAt },
+      rateLimitedUntil,
+      servedAt: this.now().getTime(),
+    };
   }
 }
 

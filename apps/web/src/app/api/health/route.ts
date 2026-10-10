@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authAvailable } from "@/lib/auth/current-session";
 import { getServices } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export async function GET() {
       dataProvider: reportService.providerKind,
       cache: store.name,
       oauth: config.oauth.provider,
+      auth: authAvailable(),
       time: new Date().toISOString(),
     },
     { headers: { "Cache-Control": "no-store" } },

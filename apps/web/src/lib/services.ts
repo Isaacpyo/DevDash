@@ -43,6 +43,9 @@ export function getServices(): Services {
   if (services) return services;
 
   const config = getConfig();
+  if (config.isProduction && !config.sessionSecret) {
+    console.warn("[auth] SESSION_SECRET is not set: sign-in and the demo login are disabled.");
+  }
   const store = createStore(config);
   const provider =
     config.dataProvider === "github"

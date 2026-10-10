@@ -83,6 +83,8 @@ export interface ProfileReport {
   /** How many repos the language breakdown covers. */
   languageRepoCount: number;
   topRepos: TopRepo[];
+  /** Public, non-fork repos analysed (GitHub returns at most the 100 most-starred). */
+  repoCount: number;
   totalStars: number;
   pullRequests: PullRequestStats;
   recentActivity: ActivityItem[];
