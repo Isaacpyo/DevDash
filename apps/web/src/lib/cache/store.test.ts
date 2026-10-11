@@ -38,6 +38,7 @@ describe("RedisStore", () => {
       set: vi.fn(async () => "OK"),
       del: vi.fn(),
       eval: vi.fn(),
+      ping: vi.fn(),
     } satisfies RedisLike;
     await new RedisStore(redis).set("k", "v", 1.2);
     expect(redis.set).toHaveBeenCalledWith("k", "v", "EX", 2);
@@ -57,6 +58,9 @@ describe("RedisStore", () => {
       eval: async () => {
         throw new Error("ECONNREFUSED");
       },
+      ping: async () => {
+        throw new Error("ECONNREFUSED");
+      },
     };
     const log = vi.fn();
     const store = new RedisStore(failing, new MemoryStore(), log);
@@ -67,6 +71,8 @@ describe("RedisStore", () => {
     expect(await store.increment("n", 60)).toBe(1);
     expect(await store.increment("n", 60)).toBe(2);
     expect(log).toHaveBeenCalledTimes(1);
+    // Health must see the outage even though reads and writes fell back.
+    expect(await store.ping()).toBe(false);
   });
 
   it("increments with one atomic script that sets the TTL on first use", async () => {
@@ -75,7 +81,9 @@ describe("RedisStore", () => {
       set: vi.fn(),
       del: vi.fn(),
       eval: vi.fn<RedisLike["eval"]>(async () => 3),
+      ping: vi.fn(async () => "PONG"),
     } satisfies RedisLike;
+    expect(await new RedisStore(redis).ping()).toBe(true);
     expect(await new RedisStore(redis).increment("lookups:x", 599.5)).toBe(3);
     const [script, numKeys, key, ttl] = redis.eval.mock.calls[0]!;
     expect(script).toContain("INCR");
@@ -94,5 +102,6 @@ describe("MemoryStore.increment", () => {
     expect(await store.increment("n", 10)).toBe(3);
     now = 10_000;
     expect(await store.increment("n", 10)).toBe(1);
+    expect(await store.ping()).toBe(true);
   });
 });

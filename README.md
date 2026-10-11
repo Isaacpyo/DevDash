@@ -118,7 +118,7 @@ DevDash is a single Next.js app. The existing Netlify site builds it from `apps/
    - Callback URL: `https://devdash.temitopeagbola.com/api/auth/github/callback`
 3. **Upstash Redis**: create a free database at console.upstash.com and copy the `rediss://` connection string (the TCP URL, not the REST URL).
 4. **Netlify** (site settings → Environment variables): set `GITHUB_TOKEN`, `SESSION_SECRET` (`openssl rand -base64 48`), `REDIS_URL`, `SITE_URL=https://devdash.temitopeagbola.com`, and optionally `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET`. Then trigger a deploy.
-5. Check `https://devdash.temitopeagbola.com/api/health`. It reports the active provider, cache backend and which sign-in methods are enabled, never secrets.
+5. Check `https://devdash.temitopeagbola.com/api/health`. It reports the active provider, the cache backend and whether Redis answers (`cacheReachable`), and which sign-in methods are enabled. It never shows secrets.
 
 OAuth only works on the domain registered as the callback. Deploy previews still serve data and the demo.
 

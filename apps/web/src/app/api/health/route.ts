@@ -12,6 +12,7 @@ export async function GET() {
       status: "ok",
       dataProvider: reportService.providerKind,
       cache: store.name,
+      cacheReachable: await store.ping(),
       oauth: config.oauth.provider,
       auth: authAvailable(),
       time: new Date().toISOString(),

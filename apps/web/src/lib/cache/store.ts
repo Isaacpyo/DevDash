@@ -8,6 +8,8 @@ export interface CacheStore {
    * only when the counter is created, so a window always expires on schedule.
    */
   increment(key: string, ttlSeconds: number): Promise<number>;
+  /** True when the backing store answers; used by the health check. */
+  ping(): Promise<boolean>;
 }
 
 /**
@@ -62,6 +64,10 @@ export class MemoryStore implements CacheStore {
     return next;
   }
 
+  async ping(): Promise<boolean> {
+    return true;
+  }
+
   get size(): number {
     return this.entries.size;
   }
@@ -73,6 +79,7 @@ export interface RedisLike {
   set(key: string, value: string, mode: "EX", seconds: number): Promise<unknown>;
   del(key: string): Promise<unknown>;
   eval(script: string, numKeys: number, ...args: Array<string | number>): Promise<unknown>;
+  ping(): Promise<string>;
 }
 
 /** INCR and set the expiry on first use in one atomic step, so a counter can't outlive its window. */
@@ -129,6 +136,15 @@ export class RedisStore implements CacheStore {
     } catch (error) {
       this.report(error);
       return this.fallback.increment(key, ttlSeconds);
+    }
+  }
+
+  /** Reports Redis itself, not the fallback, so a broken connection is visible. */
+  async ping(): Promise<boolean> {
+    try {
+      return (await this.redis.ping()) === "PONG";
+    } catch {
+      return false;
     }
   }
 
