@@ -37,10 +37,12 @@ function createStore(config: AppConfig): CacheStore {
   return new RedisStore(redis);
 }
 
-let services: Services | undefined;
+// Next bundles pages and route handlers separately, so a module-level variable
+// would give each bundle its own cache and Redis connection. Share one per process.
+const globalForServices = globalThis as typeof globalThis & { __devdashServices?: Services };
 
 export function getServices(): Services {
-  if (services) return services;
+  if (globalForServices.__devdashServices) return globalForServices.__devdashServices;
 
   const config = getConfig();
   if (config.isProduction && !config.sessionSecret) {
@@ -61,7 +63,7 @@ export function getServices(): Services {
       console.warn(`[cache] background refresh of ${key} failed: ${String(error)}`),
   });
 
-  services = {
+  const services: Services = {
     config,
     store,
     reportService: new ReportService({
@@ -71,5 +73,6 @@ export function getServices(): Services {
       serverToken: config.githubToken,
     }),
   };
+  globalForServices.__devdashServices = services;
   return services;
 }

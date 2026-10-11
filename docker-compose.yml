@@ -1,0 +1,31 @@
+# Runs the whole system locally: the Next.js app plus Redis for the shared cache.
+#   cp .env.example .env   # optional: add GITHUB_TOKEN for live data
+#   docker compose up --build
+# Then open http://localhost:3000
+services:
+  web:
+    build: ./apps/web
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      # Local-only placeholder so the demo login works out of the box. Never reuse it in production.
+      SESSION_SECRET: ${SESSION_SECRET:-local-docker-only-session-secret-change-me}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
