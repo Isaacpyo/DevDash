@@ -158,6 +158,16 @@ describe("GitHubClient.rest", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry timeouts, which already used the request budget", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    });
+    await expect(client(fetchImpl).rest("/users/x", userSchema)).rejects.toThrow(
+      /did not respond in time/,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects bodies that don't match the schema", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => json({ nope: 1 }));
     await expect(client(fetchImpl).rest("/users/x", userSchema)).rejects.toThrow(

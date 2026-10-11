@@ -6,9 +6,6 @@ const nextConfig: NextConfig = {
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   poweredByHeader: false,
   serverExternalPackages: ["ioredis"],
-  images: {
-    remotePatterns: [{ protocol: "https", hostname: "avatars.githubusercontent.com" }],
-  },
   async headers() {
     return [
       {

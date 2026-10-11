@@ -78,7 +78,8 @@ export class GitHubClient {
   constructor(private readonly options: GitHubClientOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.baseUrl = options.baseUrl ?? GITHUB_API_URL;
-    this.timeoutMs = options.timeoutMs ?? 10_000;
+    // Netlify's free functions stop at ~10 s, so one attempt must fit well inside that.
+    this.timeoutMs = options.timeoutMs ?? 8_000;
     this.retryDelayMs = options.retryDelayMs ?? 400;
     this.now = options.now ?? Date.now;
   }
@@ -150,10 +151,11 @@ export class GitHubClient {
       });
     } catch (error) {
       const timedOut = error instanceof Error && error.name === "TimeoutError";
+      // A timeout already used most of the request budget, so only fast failures are retried.
       throw new UpstreamError(
         timedOut ? "GitHub did not respond in time" : "Could not reach GitHub",
         undefined,
-        true,
+        !timedOut,
       );
     }
 
