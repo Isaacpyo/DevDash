@@ -33,7 +33,12 @@ describe("MemoryStore", () => {
 
 describe("RedisStore", () => {
   it("passes TTLs to Redis as whole seconds", async () => {
-    const redis = { get: vi.fn(), set: vi.fn(async () => "OK"), del: vi.fn() } satisfies RedisLike;
+    const redis = {
+      get: vi.fn(),
+      set: vi.fn(async () => "OK"),
+      del: vi.fn(),
+      eval: vi.fn(),
+    } satisfies RedisLike;
     await new RedisStore(redis).set("k", "v", 1.2);
     expect(redis.set).toHaveBeenCalledWith("k", "v", "EX", 2);
   });
@@ -49,6 +54,9 @@ describe("RedisStore", () => {
       del: async () => {
         throw new Error("ECONNREFUSED");
       },
+      eval: async () => {
+        throw new Error("ECONNREFUSED");
+      },
     };
     const log = vi.fn();
     const store = new RedisStore(failing, new MemoryStore(), log);
@@ -56,6 +64,35 @@ describe("RedisStore", () => {
     expect(await store.get("k")).toBe("v");
     await store.delete("k");
     expect(await store.get("k")).toBeNull();
+    expect(await store.increment("n", 60)).toBe(1);
+    expect(await store.increment("n", 60)).toBe(2);
     expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it("increments with one atomic script that sets the TTL on first use", async () => {
+    const redis = {
+      get: vi.fn(),
+      set: vi.fn(),
+      del: vi.fn(),
+      eval: vi.fn<RedisLike["eval"]>(async () => 3),
+    } satisfies RedisLike;
+    expect(await new RedisStore(redis).increment("lookups:x", 599.5)).toBe(3);
+    const [script, numKeys, key, ttl] = redis.eval.mock.calls[0]!;
+    expect(script).toContain("INCR");
+    expect(script).toContain("EXPIRE");
+    expect([numKeys, key, ttl]).toEqual([1, "lookups:x", 600]);
+  });
+});
+
+describe("MemoryStore.increment", () => {
+  it("counts up within the TTL and restarts after it expires", async () => {
+    let now = 0;
+    const store = new MemoryStore(10, () => now);
+    expect(await store.increment("n", 10)).toBe(1);
+    expect(await store.increment("n", 10)).toBe(2);
+    now = 9_999;
+    expect(await store.increment("n", 10)).toBe(3);
+    now = 10_000;
+    expect(await store.increment("n", 10)).toBe(1);
   });
 });

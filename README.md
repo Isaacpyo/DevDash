@@ -23,6 +23,7 @@ deterministic mock provider, so you can clone it and see everything working in a
 - **Sign in with GitHub** (OAuth). Signed-in requests use your own API quota first. **Try the demo** signs you into a seeded account in one click.
 - **Server-side caching with revalidation**: reports are fresh for 10 minutes, then served stale while a background refresh runs. A manual Refresh button is throttled.
 - **Graceful rate-limit handling**: primary and secondary limits are detected on both APIs. A circuit breaker stops calling GitHub until the reset, cached data is served with a banner, and when nothing is cached you get a countdown page.
+- **Per-visitor lookup limit**: each visitor can trigger 20 uncached lookups per 10 minutes, so nobody can spend the shared token's quota by scripting random usernames. Cached profiles, the demo and sample-data mode never count.
 - Loading skeletons with a slow-request hint, plus empty, not-found, organization and error states. Works down to 375px wide, supports dark mode and the keyboard, and every chart has a "View as table" twin.
 
 ## Architecture
@@ -102,6 +103,8 @@ All of them are documented in [`.env.example`](.env.example).
 | `REDIS_URL` | Recommended in production | `redis://` or `rediss://` URL (Upstash). Falls back to per-instance memory. |
 | `CACHE_TTL_SECONDS` | No | Fresh window, default 600. |
 | `CACHE_STALE_SECONDS` | No | Stale-while-revalidate window, default 86400. |
+| `LOOKUP_LIMIT` | No | Uncached lookups per visitor per window, default 20. `0` disables the limit. |
+| `LOOKUP_WINDOW_SECONDS` | No | Length of the lookup-limit window, default 600. |
 | `SITE_URL` | Recommended in production | Public base URL, used for the OAuth callback and OG images. Falls back to Netlify's `URL`. |
 | `MOCK_LATENCY_MS` | No | Mock mode only: adds a delay so you can see the loading states. |
 
@@ -139,6 +142,7 @@ There is one addition: **Redis (Upstash)** as an optional cache backend, so cach
 - Sessions are encrypted (JWE, `dir` + A256GCM, key derived from `SESSION_SECRET` via HKDF) because they carry the viewer's token. Cookies are `httpOnly`, `SameSite=Lax` and `Secure` in production.
 - The OAuth `state` is random, stored in a short-lived cookie and compared in constant time. `returnTo` only accepts same-site paths, so it can't be used as an open redirect.
 - Server actions (demo login, sign-out, refresh) get Next's built-in origin check. Refresh is throttled per profile so it can't be used to burn the rate limit.
+- Each visitor (IP, or GitHub account when signed in) gets a fixed window of uncached lookups, counted in Redis with an atomic increment. IPs are hashed before they're stored. Over the limit, the page shows a countdown and the API returns 429 with `Retry-After`.
 - All input (route params, query strings, env and GitHub responses) is validated with zod. Tokens are hashed before they're used in cache keys.
 - Security headers: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy` and `Permissions-Policy`.
 
@@ -147,4 +151,5 @@ There is one addition: **Redis (Upstash)** as an optional cache backend, so cach
 - The language breakdown and star count cover the 100 most-starred public, non-fork repos. That's GitHub's page size, and it's enough for nearly everyone.
 - Merge-time stats use the 100 most recently created merged PRs.
 - The public events feed only goes back 90 days, and GitHub has trimmed some payloads (for example, push commit counts), so summaries degrade to "Pushed to main".
-- Without Redis, each serverless instance has its own cache.
+- Without Redis, each serverless instance has its own cache, and lookup counts are per instance too.
+- The lookup limit is per visitor, so many different IPs together could still use up the quota. When that happens, the rate-limit breaker and stale cache keep the site usable.

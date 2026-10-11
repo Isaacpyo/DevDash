@@ -1,7 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/current-session";
-import { NotAUserError, NotFoundError, RateLimitError } from "@/lib/github/errors";
+import {
+  LookupLimitError,
+  NotAUserError,
+  NotFoundError,
+  RateLimitError,
+} from "@/lib/github/errors";
 import { loginSchema } from "@/lib/github/username";
+import { requestSubject } from "@/lib/request-subject";
 import { getServices } from "@/lib/services";
 
 function problem(status: number, error: string, message: string, headers?: HeadersInit) {
@@ -9,8 +15,12 @@ function problem(status: number, error: string, message: string, headers?: Heade
 }
 
 /** JSON version of a profile report, with the cache status exposed for debugging. */
+function retryAfterSeconds(until: number): string {
+  return String(Math.max(1, Math.ceil((until - Date.now()) / 1000)));
+}
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ login: string }> },
 ) {
   const parsed = loginSchema.safeParse((await params).login);
@@ -24,6 +34,7 @@ export async function GET(
       parsed.data,
       {
         viewerToken: session?.accessToken,
+        subject: requestSubject(request.headers, session),
       },
     );
     return NextResponse.json(
@@ -44,10 +55,17 @@ export async function GET(
     if (error instanceof NotFoundError) return problem(404, "not_found", error.message);
     if (error instanceof NotAUserError) return problem(422, "not_a_user", error.message);
     if (error instanceof RateLimitError) {
-      const retryAfter = Math.max(1, Math.ceil((error.resetAt - Date.now()) / 1000));
       return problem(429, "rate_limited", "GitHub's API rate limit was reached. Try again later.", {
-        "Retry-After": String(retryAfter),
+        "Retry-After": retryAfterSeconds(error.resetAt),
       });
+    }
+    if (error instanceof LookupLimitError) {
+      return problem(
+        429,
+        "too_many_lookups",
+        "Too many new profile lookups from this client. Cached profiles still work.",
+        { "Retry-After": retryAfterSeconds(error.retryAt) },
+      );
     }
     console.error("[api/profile] unexpected error", error);
     return problem(502, "upstream_error", "Couldn't load data from GitHub.");

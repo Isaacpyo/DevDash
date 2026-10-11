@@ -2,6 +2,7 @@ import "server-only";
 import Redis from "ioredis";
 import { after } from "next/server";
 import { RateLimitBreaker } from "@/lib/cache/breaker";
+import { LookupLimiter } from "@/lib/cache/lookup-limiter";
 import { type CacheStore, MemoryStore, RedisStore } from "@/lib/cache/store";
 import { SwrCache } from "@/lib/cache/swr";
 import { type AppConfig, getConfig } from "@/lib/env";
@@ -70,6 +71,7 @@ export function getServices(): Services {
       provider,
       cache,
       breaker: new RateLimitBreaker(store),
+      limiter: new LookupLimiter(store, config.lookups),
       serverToken: config.githubToken,
     }),
   };

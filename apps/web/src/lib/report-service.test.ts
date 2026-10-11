@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { RateLimitBreaker } from "@/lib/cache/breaker";
+import { LookupLimiter } from "@/lib/cache/lookup-limiter";
 import { MemoryStore } from "@/lib/cache/store";
 import { SwrCache } from "@/lib/cache/swr";
-import { BadCredentialsError, NotFoundError, RateLimitError } from "@/lib/github/errors";
+import {
+  BadCredentialsError,
+  LookupLimitError,
+  NotFoundError,
+  RateLimitError,
+} from "@/lib/github/errors";
 import { createMockProvider, generateMockData } from "@/lib/github/mock-provider";
 import type { DataProvider, FetchOptions } from "@/lib/github/types";
 import { DEMO_LOGIN } from "@/lib/github/username";
@@ -10,7 +16,11 @@ import { ReportService } from "./report-service";
 
 const START = new Date("2026-10-10T12:00:00Z").getTime();
 
-function setup(provider: DataProvider, serverToken: string | null = "server-token") {
+function setup(
+  provider: DataProvider,
+  serverToken: string | null = "server-token",
+  lookupLimit = 0,
+) {
   let now = START;
   const tasks: Array<() => Promise<void>> = [];
   const store = new MemoryStore(100, () => now);
@@ -22,10 +32,12 @@ function setup(provider: DataProvider, serverToken: string | null = "server-toke
     schedule: (task) => tasks.push(task),
   });
   const breaker = new RateLimitBreaker(store, () => now);
+  const limiter = new LookupLimiter(store, { limit: lookupLimit, windowSeconds: 600 }, () => now);
   const service = new ReportService({
     provider,
     cache,
     breaker,
+    limiter,
     serverToken,
     now: () => new Date(now),
     refreshCooldownMs: 60_000,
@@ -160,8 +172,10 @@ describe("ReportService", () => {
     expect(provider.fetchProfile).toHaveBeenCalledTimes(1);
 
     advance(61_000);
+    expect(tooSoon.throttled).toBe(true);
     const refreshed = await service.refreshReport("octocat");
     expect(refreshed.refreshed).toBe(true);
+    expect(refreshed.throttled).toBe(false);
     expect(refreshed.cache.status).toBe("miss");
     expect(provider.fetchProfile).toHaveBeenCalledTimes(2);
   });
@@ -172,5 +186,65 @@ describe("ReportService", () => {
       null,
     );
     await expect(service.getReport("octocat")).rejects.toThrow(/No GitHub token/);
+  });
+  describe("per-visitor lookup limit", () => {
+    const visitor = { subject: "ip:203.0.113.7" };
+
+    it("counts only lookups that call GitHub, not cache hits", async () => {
+      const provider = githubProvider(() => {});
+      const { service } = setup(provider, "server-token", 2);
+
+      await service.getReport("alice", visitor);
+      await service.getReport("alice", visitor); // cache hit
+      await service.getReport("alice", visitor); // cache hit
+      await service.getReport("bob", visitor);
+      await expect(service.getReport("carol", visitor)).rejects.toBeInstanceOf(LookupLimitError);
+      expect(provider.fetchProfile).toHaveBeenCalledTimes(2);
+
+      // Cached profiles still load for the limited visitor, and other visitors are unaffected.
+      await expect(service.getReport("alice", visitor)).resolves.toBeTruthy();
+      await expect(
+        service.getReport("carol", { subject: "ip:198.51.100.1" }),
+      ).resolves.toBeTruthy();
+    });
+
+    it("resets after the window", async () => {
+      const { service, advance } = setup(
+        githubProvider(() => {}),
+        "server-token",
+        1,
+      );
+      await service.getReport("alice", visitor);
+      await expect(service.getReport("bob", visitor)).rejects.toBeInstanceOf(LookupLimitError);
+      advance(600_000);
+      await expect(service.getReport("bob", visitor)).resolves.toBeTruthy();
+    });
+
+    it("never limits the demo account or mock mode, which don't use GitHub", async () => {
+      const { service } = setup(createMockProvider({ now: () => new Date(START) }), null, 1);
+      await service.getReport("alice", visitor);
+      await expect(service.getReport("bob", visitor)).resolves.toBeTruthy();
+
+      const github = setup(
+        githubProvider(() => {}),
+        "server-token",
+        1,
+      );
+      await github.service.getReport("alice", visitor);
+      await expect(github.service.getReport(DEMO_LOGIN, visitor)).resolves.toBeTruthy();
+    });
+
+    it("reports a blocked forced refresh as not refreshed rather than throttled", async () => {
+      const { service, advance } = setup(
+        githubProvider(() => {}),
+        "server-token",
+        1,
+      );
+      await service.getReport("alice", visitor);
+      advance(61_000);
+      const result = await service.refreshReport("alice", visitor);
+      expect(result).toMatchObject({ refreshed: false, throttled: false });
+      expect(result.report.profile.login).toBe("alice");
+    });
   });
 });

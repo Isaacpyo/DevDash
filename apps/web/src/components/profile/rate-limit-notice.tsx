@@ -20,14 +20,20 @@ function useCountdown(until: number) {
   return { done: remaining === 0, label: `${minutes}:${String(seconds).padStart(2, "0")}` };
 }
 
-/** Shown instead of the dashboard when GitHub is rate limiting us and nothing is cached. */
+/**
+ * Shown instead of the dashboard when a lookup can't call GitHub and nothing is cached:
+ * either GitHub's quota is used up ("github") or this visitor hit DevDash's own
+ * per-visitor lookup limit ("visitor").
+ */
 export function RateLimitNotice({
   login,
+  reason,
   resetAt,
   canSignIn,
   canUseDemo,
 }: {
   login: string;
+  reason: "github" | "visitor";
   resetAt: number;
   canSignIn: boolean;
   canUseDemo: boolean;
@@ -38,10 +44,22 @@ export function RateLimitNotice({
   return (
     <div className="mx-auto max-w-xl rounded-2xl border border-line bg-surface p-6 text-center sm:p-8">
       <AlertIcon width={28} height={28} className="mx-auto text-warning-ink" />
-      <h1 className="mt-3 text-xl font-semibold text-ink">GitHub needs a breather</h1>
+      <h1 className="mt-3 text-xl font-semibold text-ink">
+        {reason === "github" ? "GitHub needs a breather" : "Slow down a little"}
+      </h1>
       <p className="mt-2 text-sm text-ink-secondary">
-        DevDash has used its GitHub API quota for now, and there&apos;s no cached copy of{" "}
-        <strong>{login}</strong> yet. The quota resets at {formatTime(resetAt)}
+        {reason === "github" ? (
+          <>
+            DevDash has used its GitHub API quota for now, and there&apos;s no cached copy of{" "}
+            <strong>{login}</strong> yet. The quota resets at {formatTime(resetAt)}
+          </>
+        ) : (
+          <>
+            You&apos;ve looked up a lot of new profiles in a short time, and{" "}
+            <strong>{login}</strong> isn&apos;t cached yet. Profiles that are already cached still
+            load. New lookups unlock at {formatTime(resetAt)}
+          </>
+        )}
         {!done && (
           <>
             {" "}
@@ -65,7 +83,7 @@ export function RateLimitNotice({
             className={buttonStyles.secondary}
           >
             <GitHubMark />
-            Sign in to use your own quota
+            {reason === "github" ? "Sign in to use your own quota" : "Sign in with GitHub"}
           </a>
         )}
         {canUseDemo && (

@@ -30,6 +30,11 @@ const envSchema = z.object({
     blankToUndefined,
     z.coerce.number().int().min(0).default(86_400),
   ),
+  LOOKUP_LIMIT: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).default(20)),
+  LOOKUP_WINDOW_SECONDS: z.preprocess(
+    blankToUndefined,
+    z.coerce.number().int().positive().default(600),
+  ),
   SITE_URL: optional(z.url()),
   /** Set automatically by Netlify to the site's main URL. */
   URL: optional(z.url()),
@@ -51,6 +56,8 @@ export interface AppConfig {
   sessionSecret: string | null;
   redisUrl: string | null;
   cache: { freshMs: number; staleMs: number };
+  /** Uncached lookups each visitor may trigger per window; limit 0 disables. */
+  lookups: { limit: number; windowSeconds: number };
   siteUrl: string;
 }
 
@@ -94,6 +101,7 @@ export function loadConfig(source: Record<string, string | undefined> = process.
     sessionSecret: env.SESSION_SECRET ?? (isProduction ? null : DEV_SESSION_SECRET),
     redisUrl: env.REDIS_URL ?? null,
     cache: { freshMs: env.CACHE_TTL_SECONDS * 1000, staleMs: env.CACHE_STALE_SECONDS * 1000 },
+    lookups: { limit: env.LOOKUP_LIMIT, windowSeconds: env.LOOKUP_WINDOW_SECONDS },
     siteUrl: (env.SITE_URL ?? env.URL ?? "http://localhost:3000").replace(/\/$/, ""),
   };
 }

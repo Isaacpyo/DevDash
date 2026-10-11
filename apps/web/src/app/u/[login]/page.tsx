@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { OrganizationNotice } from "@/components/profile/notices";
 import { ProfileDashboard } from "@/components/profile/profile-dashboard";
 import { RateLimitNotice } from "@/components/profile/rate-limit-notice";
 import { authAvailable, getSession } from "@/lib/auth/current-session";
-import { NotAUserError, NotFoundError, RateLimitError } from "@/lib/github/errors";
+import {
+  LookupLimitError,
+  NotAUserError,
+  NotFoundError,
+  RateLimitError,
+} from "@/lib/github/errors";
 import { loginSchema } from "@/lib/github/username";
 import type { ReportEnvelope } from "@/lib/report-service";
+import { requestSubject } from "@/lib/request-subject";
 import { getServices } from "@/lib/services";
 
 type Props = { params: Promise<{ login: string }> };
@@ -41,6 +48,7 @@ export default async function ProfilePage({ params }: Props) {
   try {
     envelope = await getServices().reportService.getReport(login, {
       viewerToken: session?.accessToken,
+      subject: requestSubject(await headers(), session),
     });
   } catch (error) {
     if (error instanceof NotFoundError) notFound();
@@ -51,14 +59,17 @@ export default async function ProfilePage({ params }: Props) {
         </div>
       );
     }
-    if (error instanceof RateLimitError) {
+    if (error instanceof RateLimitError || error instanceof LookupLimitError) {
       const auth = authAvailable();
+      const visitor = error instanceof LookupLimitError;
       return (
         <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
           <RateLimitNotice
             login={login}
-            resetAt={error.resetAt}
-            canSignIn={auth.github && !session}
+            reason={visitor ? "visitor" : "github"}
+            resetAt={visitor ? error.retryAt : error.resetAt}
+            // Signing in moves a visitor to their own per-account allowance.
+            canSignIn={auth.github && session?.kind !== "github"}
             canUseDemo={auth.demo && !session}
           />
         </div>

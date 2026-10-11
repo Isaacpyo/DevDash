@@ -1,7 +1,9 @@
+import { headers } from "next/headers";
 import { ImageResponse } from "next/og";
 import type { ProfileReport } from "@/lib/analytics/types";
 import { formatCount, formatHours } from "@/lib/format";
 import { loginSchema } from "@/lib/github/username";
+import { requestSubject } from "@/lib/request-subject";
 import { getServices } from "@/lib/services";
 
 export const alt = "DevDash GitHub analytics summary";
@@ -25,7 +27,9 @@ export default async function OpenGraphImage({ params }: { params: Promise<{ log
   let report: ProfileReport | null = null;
   if (parsed.success) {
     try {
-      report = (await getServices().reportService.getReport(parsed.data)).report;
+      // Crawlers fetch these too, so they count against the requesting IP like any lookup.
+      const subject = requestSubject(await headers(), null);
+      report = (await getServices().reportService.getReport(parsed.data, { subject })).report;
     } catch {
       report = null;
     }

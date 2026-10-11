@@ -3,6 +3,11 @@ export interface CacheStore {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, ttlSeconds: number): Promise<void>;
   delete(key: string): Promise<void>;
+  /**
+   * Atomically adds 1 to a counter and returns the new value. The TTL is set
+   * only when the counter is created, so a window always expires on schedule.
+   */
+  increment(key: string, ttlSeconds: number): Promise<number>;
 }
 
 /**
@@ -46,6 +51,17 @@ export class MemoryStore implements CacheStore {
     this.entries.delete(key);
   }
 
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    const entry = this.entries.get(key);
+    if (!entry || entry.expiresAt <= this.now()) {
+      await this.set(key, "1", ttlSeconds);
+      return 1;
+    }
+    const next = Number(entry.value) + 1;
+    entry.value = String(next);
+    return next;
+  }
+
   get size(): number {
     return this.entries.size;
   }
@@ -56,7 +72,14 @@ export interface RedisLike {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, mode: "EX", seconds: number): Promise<unknown>;
   del(key: string): Promise<unknown>;
+  eval(script: string, numKeys: number, ...args: Array<string | number>): Promise<unknown>;
 }
+
+/** INCR and set the expiry on first use in one atomic step, so a counter can't outlive its window. */
+const INCREMENT_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return count`;
 
 /**
  * Redis-backed store that never takes the page down: any Redis error is logged
@@ -97,6 +120,16 @@ export class RedisStore implements CacheStore {
       this.report(error);
     }
     await this.fallback.delete(key);
+  }
+
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    try {
+      const ttl = Math.max(1, Math.ceil(ttlSeconds));
+      return Number(await this.redis.eval(INCREMENT_SCRIPT, 1, key, ttl));
+    } catch (error) {
+      this.report(error);
+      return this.fallback.increment(key, ttlSeconds);
+    }
   }
 
   private report(error: unknown) {

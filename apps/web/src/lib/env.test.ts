@@ -65,4 +65,14 @@ describe("loadConfig", () => {
       "https://site.netlify.app",
     );
   });
+
+  it("configures the per-visitor lookup limit", () => {
+    expect(loadConfig({}).lookups).toEqual({ limit: 20, windowSeconds: 600 });
+    expect(loadConfig({ LOOKUP_LIMIT: "0", LOOKUP_WINDOW_SECONDS: "60" }).lookups).toEqual({
+      limit: 0,
+      windowSeconds: 60,
+    });
+    expect(() => loadConfig({ LOOKUP_LIMIT: "-1" })).toThrow(ConfigurationError);
+    expect(() => loadConfig({ LOOKUP_WINDOW_SECONDS: "0" })).toThrow(ConfigurationError);
+  });
 });

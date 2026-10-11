@@ -1,6 +1,7 @@
 import { buildReport } from "@/lib/analytics/report";
 import { type ProfileReport, REPORT_SCHEMA_VERSION } from "@/lib/analytics/types";
 import { RateLimitBreaker } from "@/lib/cache/breaker";
+import type { LookupLimiter } from "@/lib/cache/lookup-limiter";
 import type { CacheStatus, SwrCache } from "@/lib/cache/swr";
 import { generateDemoData } from "@/lib/github/demo-fixture";
 import { BadCredentialsError, ConfigurationError, RateLimitError } from "@/lib/github/errors";
@@ -17,8 +18,10 @@ export interface ReportEnvelope {
 }
 
 export interface RefreshResult extends ReportEnvelope {
-  /** False when the data was refreshed too recently to fetch again. */
+  /** True when fresh data was fetched from GitHub. */
   refreshed: boolean;
+  /** True when skipped because the data was refreshed less than a minute ago. */
+  throttled: boolean;
 }
 
 export interface ReportServiceDeps {
@@ -26,6 +29,8 @@ export interface ReportServiceDeps {
   cache: SwrCache;
   breaker: RateLimitBreaker;
   serverToken: string | null;
+  /** Per-visitor cap on lookups that call GitHub. Optional so tests can omit it. */
+  limiter?: LookupLimiter;
   now?: () => Date;
   /** Minimum age before a manual refresh hits GitHub again. */
   refreshCooldownMs?: number;
@@ -34,6 +39,8 @@ export interface ReportServiceDeps {
 export interface RequestContext {
   /** The signed-in viewer's OAuth token; tried before the shared server token. */
   viewerToken?: string | null;
+  /** Who uncached lookups are counted against (see requestSubject). */
+  subject?: string;
 }
 
 interface Credential {
@@ -72,12 +79,15 @@ export class ReportService {
       return {
         ...(await this.envelope(current.value, current.status, current.storedAt, context)),
         refreshed: false,
+        throttled: true,
       };
     }
     const result = await this.deps.cache.get(key, this.loader(login, context), { force: true });
     return {
       ...(await this.envelope(result.value, result.status, result.storedAt, context)),
+      // Anything but a miss means the fetch failed and the cache fell back to the old copy.
       refreshed: result.status === "miss",
+      throttled: false,
     };
   }
 
@@ -101,6 +111,9 @@ export class ReportService {
 
     const credentials = this.credentials(context);
     if (credentials.length === 0) throw new ConfigurationError("No GitHub token configured");
+
+    // Only lookups that reach this point call GitHub; cache hits, the demo and mock mode never count.
+    await this.deps.limiter?.consume(context.subject ?? "unknown");
 
     let lastError: unknown;
     for (const credential of credentials) {

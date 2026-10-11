@@ -1,10 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { endSession, getSession, startSession } from "@/lib/auth/current-session";
-import { RateLimitError } from "@/lib/github/errors";
+import { LookupLimitError, RateLimitError } from "@/lib/github/errors";
 import { DEMO_LOGIN, loginSchema } from "@/lib/github/username";
 import { formatTime } from "@/lib/format";
+import { requestSubject } from "@/lib/request-subject";
 import { getServices } from "@/lib/services";
 
 export async function signInAsDemo(): Promise<void> {
@@ -38,6 +40,7 @@ export async function refreshProfile(
   try {
     const result = await getServices().reportService.refreshReport(parsed.data, {
       viewerToken: session?.accessToken,
+      subject: requestSubject(await headers(), session),
     });
     if (result.rateLimitedUntil) {
       return {
@@ -45,14 +48,23 @@ export async function refreshProfile(
         message: `GitHub is rate limiting us until ${formatTime(result.rateLimitedUntil)}. Showing cached data.`,
       };
     }
-    return result.refreshed
-      ? { status: "refreshed", message: "Updated with the latest data from GitHub." }
-      : { status: "throttled", message: "Already up to date. You can refresh again in a minute." };
+    if (result.refreshed) {
+      return { status: "refreshed", message: "Updated with the latest data from GitHub." };
+    }
+    return result.throttled
+      ? { status: "throttled", message: "Already up to date. You can refresh again in a minute." }
+      : { status: "error", message: "Couldn't refresh right now. Showing the cached data." };
   } catch (error) {
     if (error instanceof RateLimitError) {
       return {
         status: "error",
         message: `GitHub rate limit reached. Try again after ${formatTime(error.resetAt)}.`,
+      };
+    }
+    if (error instanceof LookupLimitError) {
+      return {
+        status: "error",
+        message: `You've looked up a lot of new profiles. Try again after ${formatTime(error.retryAt)}.`,
       };
     }
     return { status: "error", message: "Couldn't reach GitHub. Please try again shortly." };

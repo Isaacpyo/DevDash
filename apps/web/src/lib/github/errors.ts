@@ -75,3 +75,18 @@ export class BadCredentialsError extends GitHubError {
   static override readonly errorName = "BadCredentialsError";
   override name = "BadCredentialsError";
 }
+
+/**
+ * Not an error from GitHub: DevDash's own per-visitor cap on lookups that would
+ * call GitHub, so one client can't spend the shared token's quota.
+ */
+export class LookupLimitError extends GitHubError {
+  static override readonly errorName = "LookupLimitError";
+  override name = "LookupLimitError";
+  constructor(
+    /** Epoch milliseconds when the visitor's window resets. */
+    readonly retryAt: number,
+  ) {
+    super(`Too many new profile lookups; try again at ${new Date(retryAt).toISOString()}`);
+  }
+}
