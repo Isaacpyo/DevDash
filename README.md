@@ -1,155 +1,242 @@
 # DevDash
 
-**GitHub developer analytics for any username.** Live: **https://devdash.temitopeagbola.com**
+[![CI](https://github.com/temitopeagbola/DevDash/actions/workflows/ci.yml/badge.svg)](https://github.com/temitopeagbola/DevDash/actions/workflows/ci.yml)
 
-DevDash turns a GitHub username into a shareable dashboard: a year-long contribution
-heatmap with streaks, the languages someone actually writes, monthly commits / PRs /
-reviews / issues, their top repositories and how quickly their pull requests get merged.
-It's a Next.js App Router app that talks to GitHub's GraphQL and REST APIs from the
-server, caches every report with stale-while-revalidate semantics in Redis, and degrades
-gracefully when GitHub's rate limit runs out. With no API keys it runs entirely on a
-deterministic mock provider, so you can clone it and see everything working in a minute.
+**GitHub developer analytics for any username**, for developers who want a quick, shareable picture of how someone ships. Live at **https://devdash.temitopeagbola.com**.
 
 ![DevDash dashboard for the seeded demo account](docs/screenshot.png)
 
+## Overview
+
+GitHub's own profile page shows a contribution graph and pinned repos, but not how someone works over time: which languages they write, how their activity splits between commits, PRs, reviews and issues, or how long their pull requests take to merge. DevDash turns a username into a dashboard that answers those questions.
+
+It's a single Next.js App Router app. Server code calls GitHub's GraphQL and REST APIs, turns the responses into a report and caches it in Redis with stale-while-revalidate. It also keeps working when GitHub's rate limit runs out. With no API keys it runs on a deterministic mock provider, so a fresh clone works straight away.
+
 ## Features
 
-- **Search any GitHub user** at `/u/<login>`, or paste a github.com URL. Every profile URL is shareable and has its own Open Graph card.
+- **Search any GitHub user** at `/u/<login>`, or paste a github.com profile URL. Each profile has its own shareable URL and Open Graph image.
 - **Contribution heatmap** for the last year, with current and longest streaks, best day, active days and busiest weekday.
-- **Activity over time**: monthly commits, pull requests, code reviews and issues for 12 months.
-- **Language breakdown** by bytes of code across the user's own public repos (forks excluded).
+- **Activity over time**: commits, pull requests, code reviews and issues per month for the last 12 months.
+- **Language breakdown** by bytes of code across the user's own public, non-fork repos.
 - **Pull request merge time**: median, p90, merge rate, a distribution histogram and median PR size.
-- **Top repositories** and a **recent activity** feed from the REST events API.
-- **Sign in with GitHub** (OAuth). Signed-in requests use your own API quota first. **Try the demo** signs you into a seeded account in one click.
-- **Server-side caching with revalidation**: reports are fresh for 10 minutes, then served stale while a background refresh runs. A manual Refresh button is throttled.
-- **Graceful rate-limit handling**: primary and secondary limits are detected on both APIs. A circuit breaker stops calling GitHub until the reset, cached data is served with a banner, and when nothing is cached you get a countdown page.
-- **Per-visitor lookup limit**: each visitor can trigger 20 uncached lookups per 10 minutes, so nobody can spend the shared token's quota by scripting random usernames. Cached profiles, the demo and sample-data mode never count.
-- Loading skeletons with a slow-request hint, plus empty, not-found, organization and error states. Works down to 375px wide, supports dark mode and the keyboard, and every chart has a "View as table" twin.
+- **Top repositories**, plus a **recent activity** feed from the REST events API.
+- **Sign in with GitHub** (OAuth). Signed-in lookups use your own API quota first. **Try the demo** signs you into a seeded sample account.
+- **Server-side caching**:
+  - Reports are fresh for 10 minutes, then served stale while a background refresh runs.
+  - A manual Refresh button is throttled to once a minute per profile.
+- **Rate-limit handling**:
+  - GitHub's primary and secondary limits are detected on both APIs.
+  - A circuit breaker pauses calls until the limit resets.
+  - Cached data is served with a banner. If nothing is cached, you get a countdown page.
+- **Per-visitor lookup limit**: 20 uncached lookups per visitor per 10 minutes, so nobody can spend the shared token's quota by scripting random usernames. Cached profiles, the demo and sample-data mode don't count.
+- **Accessibility and states**:
+  - Loading skeletons with a slow-request hint, plus empty, not-found, organization and error states.
+  - Works down to 375 px wide, with dark mode and keyboard support.
+  - Every chart has a "View as table" version.
+- **JSON API** at `/api/profile/<login>` and a health check at `/api/health`.
+
+## Tech stack
+
+| Area | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router, server components, route handlers, server actions), React 19 |
+| Language | TypeScript 5.9, strict mode with `noUncheckedIndexedAccess` |
+| UI | Tailwind CSS 4, Recharts 3, a custom SVG heatmap |
+| Data | GitHub GraphQL API and REST API, validated with zod 4 |
+| Auth | GitHub OAuth (no scopes requested), encrypted JWE session cookie via `jose` |
+| Cache | Redis via `ioredis` (Upstash in production), with an in-memory LRU fallback. There's no database. |
+| Hosting | Netlify (`@netlify/plugin-nextjs`). Docker image and Compose file for running it yourself. |
+| Testing | Vitest 5 and Testing Library (unit and component), Playwright (end to end) |
+| CI | GitHub Actions |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  B[Browser] --> N[Netlify CDN]
-  N --> F["Next.js App Router<br/>(Netlify Functions)"]
+  B[Browser] --> F["Next.js app<br/>(Netlify Functions)"]
   F --> S[ReportService]
   S --> C{"SWR cache<br/>fresh / stale / miss"}
-  C <-->|rediss://| R[(Upstash Redis)]
+  C <--> R[(Redis / Upstash)]
   C -. no REDIS_URL .-> MEM[(In-memory LRU)]
-  S --> BR[Rate-limit breaker]
-  BR --> R
+  S --> L[Lookup limiter + rate-limit breaker]
+  L --> R
   S --> P{Data provider}
-  P -->|"GraphQL: profile, calendar, repos,<br/>monthly totals, merged PRs"| GQL[GitHub GraphQL API]
-  P -->|"REST: public events, org lookup"| REST[GitHub REST API]
+  P -->|GraphQL| GQL[GitHub GraphQL API]
+  P -->|REST| REST[GitHub REST API]
   P -. no GITHUB_TOKEN .-> M[Mock provider]
-  F -->|OAuth code flow| GH[GitHub OAuth]
+  F -->|OAuth| GH[GitHub OAuth]
 ```
 
 How a profile request flows:
 
-1. `/u/[login]` (a server component) validates the login with zod and reads the encrypted session cookie.
-2. `ReportService` asks the SWR cache for `report:v1:<provider>:<login>`. On a hit the request never touches GitHub.
-3. On a miss, the provider fetches everything in parallel: two GraphQL queries and one REST call. It tries the viewer's OAuth token first, then the server token, and skips any token whose breaker is open.
-4. `buildReport()` turns the raw data into the dashboard model. It's pure and unit-tested, and the cache stores its output, not raw payloads.
-5. Charts render on the client with Recharts. The heatmap is a custom SVG.
+1. `/u/[login]`, a server component, validates the login with zod and reads the encrypted session cookie.
+2. `ReportService` asks the cache for `report:v1:<provider>:<login>`. A cache hit never touches GitHub.
+3. On a miss, the visitor's lookup allowance is checked. The provider then makes two GraphQL queries and one REST call in parallel. It tries the viewer's OAuth token first, then the server token, and skips any token whose rate-limit breaker is open.
+4. `buildReport()` turns the raw data into the dashboard model. It's a pure, unit-tested function, and the cache stores its output.
+5. Charts render on the client with Recharts.
 
-The code is split the same way: `src/lib/github` (HTTP client, queries, zod schemas, real and mock providers), `src/lib/analytics` (pure functions), `src/lib/cache` (stores, SWR, breaker), `src/lib/auth` (OAuth, sessions), `src/app` (routes) and `src/components` (UI).
+Design notes:
 
-## Run it locally
+- **No separate backend.** Server components and route handlers keep the GitHub token on the server and run as Netlify Functions.
+- **No database.** Sessions are stateless encrypted cookies, and reports are cache entries with a TTL.
 
-Requires Node 22+.
+### Routes
+
+| Route | What it does |
+| --- | --- |
+| `/` | Home: search, examples, recently viewed, "Try the demo", "Sign in with GitHub" |
+| `/u/[login]` | Profile dashboard |
+| `/u/[login]/opengraph-image` | Generated social card for shared links |
+| `/search?q=` | Fallback for the search form without JavaScript: validates, then redirects to `/u/<login>` |
+| `/api/profile/[login]` | Report as JSON. Sets an `X-Cache` header. Returns 429 with `Retry-After` when rate limited. |
+| `/api/health` | Status: data provider, cache backend, whether Redis answers, and which sign-in methods are enabled |
+| `/api/auth/github`, `/api/auth/github/callback` | GitHub OAuth start and callback |
+
+## Project structure
+
+```
+.
+├── apps/web/                 # The Next.js app (the only deployable)
+│   ├── src/app/              # Routes, layouts, server actions
+│   ├── src/components/       # UI and charts
+│   ├── src/lib/github/       # HTTP client, GraphQL queries, zod schemas, real + mock providers
+│   ├── src/lib/analytics/    # Pure functions that build the report
+│   ├── src/lib/cache/        # Memory/Redis stores, stale-while-revalidate cache, breaker, lookup limiter
+│   ├── src/lib/auth/         # OAuth clients, session sealing, cookie helpers
+│   ├── e2e/                  # Playwright smoke tests
+│   └── Dockerfile            # Multi-stage build (Next.js standalone output)
+├── docs/                     # PLAN.md (architecture plan) and the README screenshot
+├── .github/workflows/ci.yml  # CI pipeline
+├── docker-compose.yml        # App + Redis for local runs
+├── netlify.toml              # Netlify build config (base: apps/web)
+└── .env.example              # Every environment variable, documented
+```
+
+## Getting started
+
+### Prerequisites
+
+- **Node.js 20.9 or newer** (`engines` in `apps/web/package.json`). CI, the Docker image and Netlify all use Node 22.
+- **npm** (the repo uses `package-lock.json`).
+- **Docker**, optional, to run the app together with Redis.
+- **A GitHub token**, optional, for live data. Without one the app uses sample data.
+
+### Install and run
 
 ```bash
 cd apps/web
 npm install
-cp ../.env.example .env.local   # optional; everything works with it empty
+cp ../../.env.example .env.local   # optional; everything works with it empty
 npm run dev                     # http://localhost:3000
 ```
 
-With no `GITHUB_TOKEN` the app runs in **sample-data mode**: any username returns deterministic generated data, labelled "Sample data". These logins show the edge states: `mock-empty`, `mock-not-found`, `mock-org` and `mock-rate-limited`. Add a `GITHUB_TOKEN` for live data. Set `OAUTH_PROVIDER=mock` to try the sign-in flow without an OAuth app.
+With no `GITHUB_TOKEN`, the app runs in **sample-data mode**: any username returns generated data, labelled "Sample data". These logins show the edge states: `mock-empty`, `mock-not-found`, `mock-org` and `mock-rate-limited`. Set `OAUTH_PROVIDER=mock` to try the sign-in flow without creating an OAuth app.
 
-### Whole system with Docker
+### With Redis (Docker Compose)
 
 ```bash
-cp .env.example .env            # optional
-docker compose up --build       # web on :3000 + Redis
+cp .env.example .env            # optional, from the repo root
+docker compose up --build       # app on http://localhost:3000, plus Redis
 ```
 
-Compose runs the production build (Next.js standalone output) with a Redis container as the shared cache, so reports survive web restarts.
+Compose runs the production build with a Redis container as the shared cache. It sets `REDIS_URL` and a local-only `SESSION_SECRET` for you.
 
-### Tests and checks
+### Environment variables
+
+Each one is documented in [`.env.example`](.env.example). All are optional for local development.
+
+| Variable | Purpose |
+| --- | --- |
+| `GITHUB_TOKEN` | Server-side token for the GitHub APIs. A classic personal access token with no scopes is enough, since DevDash only reads public data. Without it the app uses sample data. |
+| `DATA_PROVIDER` | `github` or `mock`. Defaults to `github` when `GITHUB_TOKEN` is set, otherwise `mock`. |
+| `MOCK_LATENCY_MS` | Mock mode only: an artificial delay so you can see the loading states. |
+| `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth App credentials for "Sign in with GitHub". The button is hidden when these are unset. |
+| `OAUTH_PROVIDER` | Set to `mock` to run the OAuth flow against a local fake (development and e2e tests). |
+| `SESSION_SECRET` | Encrypts the session cookie. Must be 32 or more characters, and is required in production for sign-in and the demo login. |
+| `REDIS_URL` | `redis://` or `rediss://` URL for the shared cache. Without it, each instance keeps its own in-memory cache. |
+| `CACHE_TTL_SECONDS` | How long a report is served without revalidating. Default 600. |
+| `CACHE_STALE_SECONDS` | How long a stale report may still be served while refreshing or rate limited. Default 86400. |
+| `LOOKUP_LIMIT`, `LOOKUP_WINDOW_SECONDS` | Uncached lookups allowed per visitor per window. Defaults are 20 per 600 seconds; `0` turns the limit off. |
+| `SITE_URL` | Public base URL, used for the OAuth callback and Open Graph images. Falls back to Netlify's `URL`, then `http://localhost:3000`. |
+
+The app checks these values at startup and during `next build`. An invalid value, such as a short `SESSION_SECRET` or a `REDIS_URL` that isn't `redis://` or `rediss://`, fails with an error naming the variable.
+
+## Scripts
+
+Run these from `apps/web`:
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Development server on port 3000 |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | ESLint, then a Prettier check |
+| `npm run format` | Format with Prettier |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Unit and component tests (Vitest) |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:e2e` | Playwright end-to-end tests |
+
+There are no migrations or seed scripts. The demo account's data is generated in code (`src/lib/github/demo-fixture.ts`).
+
+## Testing
 
 ```bash
 cd apps/web
-npm run lint        # ESLint + Prettier
-npm run typecheck   # tsc --noEmit (strict, noUncheckedIndexedAccess)
-npm test            # Vitest: analytics, HTTP client, providers, cache, auth, components
-npm run test:e2e    # Playwright smoke suite (builds and starts the app, fully offline)
+npm test                            # unit + component tests
+npx playwright install chromium     # one-time browser download for e2e
+npm run test:e2e                    # builds the app, starts it on :3200, runs the smoke tests
 ```
 
-GitHub Actions runs all of these, plus `docker compose build`, on every push and pull request.
+- **Unit tests** cover the analytics functions, the GitHub HTTP client and error mapping, both data providers, the cache, breaker and lookup limiter, the report service, env validation, sessions and OAuth.
+- **Component tests** cover the search form and the heatmap.
+- **End-to-end tests** run fully offline, using the mock data provider and mock OAuth. They cover search, demo sign-in and sign-out, the GitHub sign-in flow, OAuth state rejection, the error and empty states, the JSON API and the 375 px layout.
 
-## Environment variables
+GitHub Actions ([`ci.yml`](.github/workflows/ci.yml)) runs on every push and pull request. One job runs lint, typecheck, unit tests, build and the e2e tests; a second runs `docker compose build`.
 
-All of them are documented in [`.env.example`](.env.example).
+## Deployment
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GITHUB_TOKEN` | For live data | Server-side token for the GitHub APIs. A classic personal access token with **no scopes** is enough (public data only). |
-| `DATA_PROVIDER` | No | `github` or `mock`. Defaults to `github` when `GITHUB_TOKEN` is set. |
-| `SESSION_SECRET` | In production | 32+ chars. Encrypts the session cookie. Without it, sign-in and the demo login are disabled. |
-| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | For "Sign in with GitHub" | GitHub OAuth App credentials. The button is hidden when unset. |
-| `OAUTH_PROVIDER` | No | `mock` runs the OAuth flow against a local fake (dev and e2e). |
-| `REDIS_URL` | Recommended in production | `redis://` or `rediss://` URL (Upstash). Falls back to per-instance memory. |
-| `CACHE_TTL_SECONDS` | No | Fresh window, default 600. |
-| `CACHE_STALE_SECONDS` | No | Stale-while-revalidate window, default 86400. |
-| `LOOKUP_LIMIT` | No | Uncached lookups per visitor per window, default 20. `0` disables the limit. |
-| `LOOKUP_WINDOW_SECONDS` | No | Length of the lookup-limit window, default 600. |
-| `SITE_URL` | Recommended in production | Public base URL, used for the OAuth callback and OG images. Falls back to Netlify's `URL`. |
-| `MOCK_LATENCY_MS` | No | Mock mode only: adds a delay so you can see the loading states. |
+Netlify builds `apps/web` with `npm run build` on Node 22 and the Next.js runtime plugin (see [`netlify.toml`](netlify.toml)). Merges to `main` deploy to production, and pull requests get deploy previews.
 
-## Deploy
+Production settings, in the Netlify site's environment variables:
 
-DevDash is a single Next.js app. The existing Netlify site builds it from `apps/web` (see [`netlify.toml`](netlify.toml)) on every merge to `main`.
+- **Required:** `GITHUB_TOKEN`, `SESSION_SECRET`, `SITE_URL`.
+- **Recommended:** `REDIS_URL` (Upstash's `rediss://` connection string, not its REST URL).
+- **Optional:** `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`. The OAuth App's callback URL must be `<SITE_URL>/api/auth/github/callback`.
 
-1. **GitHub token**: create a classic personal access token at github.com/settings/tokens with **no scopes ticked**. It can only read public data, which is all DevDash needs, and it gets 5,000 REST requests and 5,000 GraphQL points per hour.
-2. **GitHub OAuth App** (optional): create one at github.com/settings/developers.
-   - Homepage URL: `https://devdash.temitopeagbola.com`
-   - Callback URL: `https://devdash.temitopeagbola.com/api/auth/github/callback`
-3. **Upstash Redis**: create a free database at console.upstash.com and copy the `rediss://` connection string (the TCP URL, not the REST URL).
-4. **Netlify** (site settings → Environment variables): set `GITHUB_TOKEN`, `SESSION_SECRET` (`openssl rand -base64 48`), `REDIS_URL`, `SITE_URL=https://devdash.temitopeagbola.com`, and optionally `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET`. Then trigger a deploy.
-5. Check `https://devdash.temitopeagbola.com/api/health`. It reports the active provider, the cache backend and whether Redis answers (`cacheReachable`), and which sign-in methods are enabled. It never shows secrets.
+GitHub sign-in only works on the domain registered as the callback, but deploy previews still serve data and the demo.
 
-OAuth only works on the domain registered as the callback. Deploy previews still serve data and the demo.
+After a deploy, check `/api/health`. It reports the data provider, the cache backend, whether Redis answers (`cacheReachable`), and which sign-in methods are enabled. It never shows secret values.
 
-### Hosting choices: Render, Neon and Atlas aren't used
-
-The project template lists Render (backend), Neon (Postgres) and Atlas (Mongo). DevDash doesn't need any of them:
-
-- **No separate backend (no Render, no `render.yaml`).** The PROJECT stack is Next.js App Router, which is already full-stack. Server components and route handlers keep the GitHub token on the server and run as Netlify Functions. A separate API on Render's free tier would add a 30–50 s cold start for nothing. The UI still shows a "waking the server…" hint if a first request is slow.
-- **No Postgres or Mongo.** There's no relational or document data to keep. Sessions are stateless encrypted cookies, and reports are cache entries with a TTL, which is what Redis is for.
-
-## Stack substitutions
-
-**None.** The app uses the stack exactly as specified: Next.js (App Router), the GitHub REST and GraphQL APIs, Tailwind and Recharts, with a server-side token from env and a mock provider when it's absent.
-
-There is one addition: **Redis (Upstash)** as an optional cache backend, so cached reports and rate-limit state are shared across serverless instances and survive redeploys. It's optional; without `REDIS_URL` an in-memory LRU is used.
+To host it somewhere else, the `apps/web/Dockerfile` builds a standalone image that serves on port 3000.
 
 ## Security notes
 
-- The GitHub token and OAuth secrets are only read on the server. Nothing GitHub-related ships to the browser.
-- The OAuth flow requests **no scopes**, so viewer tokens can only read public data. That makes reports safe to cache globally.
-- Sessions are encrypted (JWE, `dir` + A256GCM, key derived from `SESSION_SECRET` via HKDF) because they carry the viewer's token. Cookies are `httpOnly`, `SameSite=Lax` and `Secure` in production.
-- The OAuth `state` is random, stored in a short-lived cookie and compared in constant time. `returnTo` only accepts same-site paths, so it can't be used as an open redirect.
-- Server actions (demo login, sign-out, refresh) get Next's built-in origin check. Refresh is throttled per profile so it can't be used to burn the rate limit.
-- Each visitor (IP, or GitHub account when signed in) gets a fixed window of uncached lookups, counted in Redis with an atomic increment. IPs are hashed before they're stored. Over the limit, the page shows a countdown and the API returns 429 with `Retry-After`.
-- All input (route params, query strings, env and GitHub responses) is validated with zod. Tokens are hashed before they're used in cache keys.
-- Security headers: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy` and `Permissions-Policy`.
+- **Server-only secrets.** The GitHub token and OAuth secrets are only read on the server.
+- **Public data only.** The OAuth flow requests no scopes, so viewer tokens can only read public data. That makes cached reports safe to share between visitors.
+- **Encrypted sessions.** The session cookie is a JWE (`dir` + A256GCM, with the key derived from `SESSION_SECRET` via HKDF), because it carries the viewer's token. It's `httpOnly`, `SameSite=Lax`, and `Secure` in production.
+- **OAuth hardening.** The OAuth `state` is random, stored in a short-lived cookie and compared in constant time. `returnTo` only accepts same-site paths, so it can't be used as an open redirect.
+- **Server actions.** Demo login, sign-out and refresh use Next's built-in origin check, and refresh is throttled per profile.
+- **Validation and hashing.** Route params, query strings, env and GitHub responses are all validated with zod. Tokens and visitor IPs are hashed before they're used in cache keys.
+- **Security headers:** `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy` and `Permissions-Policy`.
 
 ## Known limitations
 
-- The language breakdown and star count cover the 100 most-starred public, non-fork repos. That's GitHub's page size, and it's enough for nearly everyone.
-- Merge-time stats use the 100 most recently created merged PRs.
-- The public events feed only goes back 90 days, and GitHub has trimmed some payloads (for example, push commit counts), so summaries degrade to "Pushed to main".
-- Without Redis, each serverless instance has its own cache, and lookup counts are per instance too.
-- The lookup limit is per visitor, so many different IPs together could still use up the quota. When that happens, the rate-limit breaker and stale cache keep the site usable.
+- **Repo coverage.** The language breakdown and star count cover the 100 most-starred public, non-fork repos, because that's GitHub's page size.
+- **Merge-time sample.** Merge-time stats use the 100 most recently created merged PRs.
+- **Activity history.** The public events feed only goes back 90 days, and GitHub has trimmed some event payloads, so some summaries are less detailed (for example "Pushed to main" without a commit count).
+- **No Redis.** Without Redis, each server instance has its own cache and its own lookup counts.
+- **Distributed abuse.** The lookup limit is per visitor, so many different IPs could still use up the shared token's quota together. If that happens, the breaker and stale cache keep the site usable.
+
+## Contributing
+
+There's no CONTRIBUTING.md. The workflow is:
+
+1. Branch from `main`.
+2. Run `npm run lint`, `npm run typecheck`, `npm test` and `npm run test:e2e` in `apps/web`.
+3. Open a pull request. CI and a Netlify deploy preview run automatically.
+4. Merge once they're green. Merging to `main` deploys to production.
+
+## License
+
+All rights reserved. There's no LICENSE file in this repository.

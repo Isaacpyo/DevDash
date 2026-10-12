@@ -18,7 +18,7 @@ export function SiteFooter() {
           {live ? "Live GitHub data" : "Sample data mode (no GitHub token configured)"}
           <span aria-hidden>·</span>
           <a
-            href="https://github.com/isaacpyo/devdash"
+            href="https://github.com/temitopeagbola/DevDash"
             className="underline-offset-2 hover:text-ink hover:underline"
           >
             Source
