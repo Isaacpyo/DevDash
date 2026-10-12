@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { BadCredentialsError, NotFoundError, RateLimitError, UpstreamError } from "./errors";
 
 export const GITHUB_API_URL = "https://api.github.com";
-const USER_AGENT = "DevDash (+https://github.com/isaacpyo/devdash)";
+const USER_AGENT = "DevDash (+https://github.com/temitopeagbola/DevDash)";
 
 export interface RateLimitSnapshot {
   limit: number;
